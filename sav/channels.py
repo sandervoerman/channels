@@ -1,57 +1,45 @@
+"""Point-to-point object streams between coroutines"""
 from __future__ import annotations
 from contextlib import suppress, asynccontextmanager
-from functools import wraps
-from typing import (TypeVar, Tuple, AsyncGenerator, TYPE_CHECKING,
-                    AsyncContextManager, Callable, Awaitable, AsyncIterator)
-from asyncio import Future, CancelledError, get_running_loop
+from typing import (TypeVar, AsyncGenerator, Generic, AsyncContextManager,
+                    Callable, Awaitable, AsyncIterator)
+from asyncio import Future, get_running_loop, CancelledError
 
-__all__ = ['AsyncItemizer', 'AsyncSend', 'itemizer', 'channel']
+__all__ = ['AsyncItemize', 'AsyncItemizer', 'Channel']
 
 T = TypeVar('T')
 T_co = TypeVar('T_co', covariant=True)
 T_contra = TypeVar('T_contra', contravariant=True)
 
-# We define these public names to allow contravariant subtyping
-AsyncSend = Callable[[T_contra], Awaitable[None]]
-AsyncItemizer = AsyncContextManager[AsyncSend[T_contra]]
-
-if TYPE_CHECKING:
-    _Request = Future['_Response[T_co]']
-    _Response = Tuple[T_co, Future[_Request[T_co]]]
+# Public types for co- and contravariant typing
+AsyncItemize = Callable[[T_contra], Awaitable[None]]
+AsyncItemizer = AsyncContextManager[AsyncItemize[T_contra]]
 
 
-def itemizer(f: Callable) -> Callable:
-    @wraps(f)
+class Channel(Generic[T]):
+    """Rendezvous channel between two coroutines"""
+
+    sender: AsyncItemizer[T]
+    receiver: AsyncIterator[T]
+
+    def __init__(self):
+        self._create = get_running_loop().create_future
+        self._pull = self._create()
+        self.sender = self._sender()
+        self.receiver = self._receiver()
+
     @asynccontextmanager
-    async def wrapper(*args, **kwargs):
-        sender = f(*args, **kwargs)
-        await sender.asend(None)
-        yield sender.asend
-        await sender.aclose()
-    return wrapper
-
-
-def channel() -> Tuple[AsyncIterator[T], AsyncItemizer[T]]:
-    """Rendezvous channel between two coroutines."""
-    create = get_running_loop().create_future
-
-    async def iterate(req: _Request[T]) -> AsyncGenerator[T, None]:
-        with suppress(CancelledError):
-            while True:
-                item, confirm = await req
-                yield item
-                req = create()
-                confirm.set_result(req)
-
-    @itemizer
-    async def itemize(req: _Request[T]) -> AsyncGenerator[None, T]:
+    async def _sender(self) -> AsyncGenerator[AsyncItemize[T], None]:
+        async def send(item):
+            (await self._pull).set_result(item)
+            self._pull = self._create()
         try:
-            while True:
-                confirm = create()
-                req.set_result(((yield), confirm))
-                req = await confirm
-        except GeneratorExit:
-            req.cancel()
+            yield send
+        finally:
+            (await self._pull).cancel()
 
-    init_req = create()
-    return iterate(init_req), itemize(init_req)
+    async def _receiver(self) -> AsyncIterator[T]:
+        with suppress(CancelledError):
+            for push in iter(self._create, None):
+                self._pull.set_result(push)
+                yield await push

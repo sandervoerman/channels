@@ -1,7 +1,7 @@
 from __future__ import annotations
 from asyncio import create_task, run
 from typing import AsyncIterable
-from sav.channels import channel, AsyncItemizer
+from sav.channels import Channel, AsyncItemizer
 
 
 async def test_consumer(items: AsyncIterable):
@@ -31,9 +31,9 @@ async def test_producer(items: AsyncItemizer):
 
 
 async def main():
-    iterator, itemizer = channel()
-    x = create_task(test_consumer(iterator))
-    y = create_task(test_producer(itemizer))
+    c = Channel()
+    x = create_task(test_consumer(c.receiver))
+    y = create_task(test_producer(c.sender))
     await x
     await y
 
