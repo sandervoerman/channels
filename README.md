@@ -1,4 +1,4 @@
-# Channels: Python module for iterator streams between coroutines
+# Python iterator streams between coroutines
 
 This module provides a simple and easy to use `Channel` class to stream objects
 between coroutines. Every channel object consists of a `sender` and a `receiver`. The `receiver` is an asynchronous iterator. No special syntax, no new methods to learn. Use the `async for` syntax to read from it:
