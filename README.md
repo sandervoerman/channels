@@ -23,10 +23,11 @@ receiver: AsyncIterator[str] = channel.receiver
 
 ### Receiver
 
-The `receiver` is an asynchronous iterator. No special syntax, no new methods to learn. Use the `async for` syntax to read from it:
+The `receiver` is an [asynchronous iterator](https://docs.python.org/3/glossary.html#term-asynchronous-iterator).
+Use the `async for` syntax to read from it:
 
 ```python
-async def read():    
+async def read(receiver: AsyncIterable[str]) -> None:    
     async for item in receiver:
         print(item)      
 ```
@@ -34,12 +35,20 @@ async def read():
 You can use the receiver as the source for a generator pipeline:
 
 ```python
-async def foo():    
+async def foo(receiver: AsyncIterable[Bar]) -> AsyncIterator[Baz]:
+    y = None
     async for x in receiver:
-        yield bar(x)
+        try:
+            y.apply(x)
+        except AttributeError:
+            y = Baz(x)
+        except GetOnWithIt:
+            yield y
 ```
 
 ### Sender
+
+The `sender` is the other end of the channel. Given that the receiver is an iterator, what type of object should the sender be? It is not a reverse iterator, not a generator, and not even a reverse generator. Let us call it an *itemizer*, because it turns objects into items. The `sav.channels` module provides the generic type alias `AsyncItemizer` which you can use to contravariantly annotate functions that operate on a sender object.
 
 While generator pipelines are awesome, they do need a data source to *pull* from - a file, or a list, or another generator function containing `yield` statements. But what if you would like to *push* objects into the pipeline? You can try to organize the control flow of your program in such a way that every place where you need to write to the pipeline becomes another generator function, but then you lose a lot of flexibility. You can change your generator pipeline into a reverse generator pipeline, but then you've sacrificed the ability to *pull* data at all - including straightforward iteration. Or you could push your data into a buffer first, and then pull from it, but then you introduce latency and memory inefficiencies that should be unnecessary in the case of cooperative point-to-point message passing.
 
