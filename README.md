@@ -58,7 +58,7 @@ This is where `sender` comes in. We use the `async with` syntax to open the chan
 async with sender as itemize:
     await itemize("One")
     await itemize("Two")
-    await baz(itemize) # pass the itemizer to another coroutine
+    await baz(itemize) # pass the itemize callback to another coroutine
     await itemize("The end")
 ```
 
