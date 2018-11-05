@@ -38,10 +38,10 @@ You can use the receiver as the source for a generator pipeline:
 async def foo(receiver: AsyncIterable[Bar]) -> AsyncIterator[Baz]:
     y = None
     async for x in receiver:
+        if y is None:
+          y = Baz()
         try:
             y.apply(x)
-        except AttributeError:
-            y = Baz(x)
         except GetOnWithIt:
             yield y
 ```
