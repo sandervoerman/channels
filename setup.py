@@ -12,8 +12,10 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/sandervoerman/channels",
-    packages=[],
-    py_modules=['sav.channels'],
+    packages=['sav.channels'],
+    package_data = {
+        'sav.channels': ['py.typed'],
+    },
     python_requires='>=3.7',
     classifiers=[
         "Development Status :: 4 - Beta",
