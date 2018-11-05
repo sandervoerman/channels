@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="sav.channels",
-    version="0.1",
+    version="0.2",
     author="Sander Voerman",
     author_email="sander@savoerman.nl",
     description="Iterable stream between coroutines",
