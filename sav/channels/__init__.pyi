@@ -2,21 +2,17 @@ from types import TracebackType
 from typing import (Any, AsyncGenerator, Awaitable, Callable, Generator,
                     Generic, Optional, Type, TypeVar)
 
-_X = TypeVar('_X')
-_Y = TypeVar('_Y')
-_Gen = Generator[Awaitable, Any, None]
-_Call = Callable[[_Gen, Awaitable], AsyncGenerator[_X, _Y]]
+_S = TypeVar('_S')
+_T = TypeVar('_T')
+_Ca = Callable[[Generator[Awaitable, Any, None], Awaitable], AsyncGenerator[_S, _T]]
 
-def _fgen() -> _Gen: ...
-async def _agen(gen: _Gen, aitem: Awaitable) -> AsyncGenerator: ...
+class Channel(Generic[_S, _T]):
+    client: AsyncGenerator[_S, _T]
+    server: AsyncGenerator[_T, _S]
 
-class Channel(Generic[_X, _Y]):
-    client: AsyncGenerator[_X, _Y]
-    server: AsyncGenerator[_Y, _X]
-
-    def __init__(self, cli_call: _Call[_X, _Y] = ..., ser_call: _Call[_Y, _X] = ...): ...
-    def __aiter__(self) -> AsyncGenerator[_X, _Y]: ...
-    def __aenter__(self) -> Awaitable[AsyncGenerator[_Y, _X]]: ...
+    def __init__(self, cli_call: _Ca[_S, _T] = ..., ser_call: _Ca[_T, _S] = ...): ...
+    def __aiter__(self) -> AsyncGenerator[_S, _T]: ...
+    def __aenter__(self) -> Awaitable[AsyncGenerator[_T, _S]]: ...
     def __aexit__(self, exc_type: Optional[Type[BaseException]],
                   exc_value: Optional[BaseException],
                   traceback: Optional[TracebackType]) -> Awaitable[Optional[bool]]: ...
