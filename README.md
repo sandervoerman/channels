@@ -163,7 +163,7 @@ into different channels from within a single function or loop, whereas an
 asynchronous generator function shares the limitation with synchronous
 generators that it can only yield to the same generator object.
 
-### Efficient delegation to another producers
+### Efficient delegation to another producer
 
 Asynchronous generator functions do not support `yield from g` in order
 to delegate to another generator. Instead, you have to write
