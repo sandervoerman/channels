@@ -8,13 +8,13 @@ setuptools.setup(
     version="0.3",
     author="Sander Voerman",
     author_email="sander@savoerman.nl",
-    description="Iterable stream between coroutines",
+    description="Iterable streams between coroutines",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/sandervoerman/channels",
     packages=['sav.channels'],
     package_data={
-        'sav.channels': ['py.typed'],
+        'sav.channels': ['py.typed', '__init__.pyi'],
     },
     python_requires='>=3.7',
     classifiers=[
