@@ -1,69 +1,176 @@
-# Python iterator streams between coroutines
+# Channels: Python iterator streams between coroutines
 
-This module provides a simple and easy to use `Channel` class to stream objects
+This package provides a simple and easy to use `Channel` class to stream objects
 between coroutines.
+
+Version 0.3, copyright &copy; [Sander Voerman](sander@savoerman.nl), 2019.
+
 
 ## Installation
 
-Install the [sav.channels](https://pypi.org/project/sav.channels/) package from
-the Python Package Index. See [installing packages](https://packaging.python.org/tutorials/installing-packages/) for further instruction.
+Install the [sav.channels](https://pypi.org/project/sav.channels/)
+package from the Python Package Index. See
+[installing packages](https://packaging.python.org/tutorials/installing-packages/)
+for further instruction.
 
-## Usage
+## Overview
 
-Every channel object consists of a `sender` and a `receiver`:
+A channel is a direct connection between two coroutines, through which they can
+send and receive objects.
 
-```python
-from typing import AsyncIterator
-from sav.channels import AsyncItemizer, Channel
+### Simplex example
 
-channel = Channel()
-sender: AsyncItemizer[str] = channel.sender
-receiver: AsyncIterator[str] = channel.receiver
-```
-
-### Receiver
-
-The `receiver` is an [asynchronous iterator](https://docs.python.org/3/glossary.html#term-asynchronous-iterator).
-Use the `async for` syntax to read from it:
+In the case where objects are sent in only one direction, the channel may be
+opened using `async with` in the producing coroutine and `async for` in the
+consuming coroutine:
 
 ```python
-async def read(receiver: AsyncIterable[str]) -> None:    
-    async for item in receiver:
-        print(item)      
+import asyncio
+from typing import AsyncGenerator
+from sav.channels import Channel
+from foo import Foo
+
+async def produce(channel: Channel[Foo, None]) -> None:
+    async with channel as server:
+        await server.asend(Foo("One"))
+        await produce_two(server)
+        await server.asend(Foo("Three"))
+
+async def produce_two(server: AsyncGenerator[None, Foo]) -> None:
+    await server.asend(Foo("Two"))
+
+async def consume(channel: Channel[Foo, None]) -> None:    
+    async for foo in channel:
+        print(foo)      
+
+async def main() -> None:
+    channel = Channel()
+    await asyncio.gather(consume(channel), produce(channel))
+
+asyncio.run(main())
 ```
 
-You can use the receiver as the source for a generator pipeline:
+### Duplex example
+
+The objects returned by `channel` when `async for` and `async with` invoke
+the `__aiter__` and `__aenter__` methods are also accessible as the
+instance attributes `channel.client` and `channel.server`, respectively. Both
+objects are
+[asynchronous generators](https://www.python.org/dev/peps/pep-0525/).
+The following example demonstrates how data flows through the channel in both
+directions:
 
 ```python
-async def foo(receiver: AsyncIterable[Bar]) -> AsyncIterator[Baz]:
-    y = None
-    async for x in receiver:
-        if y is None:
-          y = Baz()
-        try:
-            y.apply(x)
-        except GetOnWithIt:
-            yield y
+import asyncio
+import itertools
+from sav.channels import Channel
+
+async def letters(channel: Channel[str, int]) -> None:
+    asend = channel.server.asend
+    async with channel:            # wait for the client
+        print(await asend("A"))    # send and receive
+        print(await asend("B"))    # send and receive
+
+async def numbers(channel: Channel[str, int]) -> None:
+    asend = channel.client.asend
+    try:
+        print(await asend(None))   # receive only
+        for i in itertools.count():
+            print(await asend(i))  # send and receive
+    except StopAsyncIteration:
+        pass
+
+async def main() -> None:
+    channel = Channel()
+    await asyncio.gather(letters(channel), numbers(channel))
+
+asyncio.run(main())
 ```
 
-### Sender
+This will produce the result:
 
-The `sender` is the other end of the channel. Given that the receiver is an iterator, what type of object should the sender be? It is not a reverse iterator, not a generator, and not even a reverse generator. Let us call it an *itemizer*, because it turns objects into items. The `sav.channels` module provides the generic type alias `AsyncItemizer` which you can use to contravariantly annotate functions that operate on a sender object.
+```
+A
+0
+B
+1
+```
 
-While generator pipelines are awesome, they do need a data source to *pull* from - a file, or a list, or another generator function containing `yield` statements. But what if you would like to *push* objects into the pipeline? You can try to organize the control flow of your program in such a way that every place where you need to write to the pipeline becomes another generator function, but then you lose a lot of flexibility. You can change your generator pipeline into a reverse generator pipeline, but then you've sacrificed the ability to *pull* data at all - including straightforward iteration. Or you could push your data into a buffer first, and then pull from it, but then you introduce latency and memory inefficiencies that should be unnecessary in the case of cooperative point-to-point message passing.
+Hence, the first item to be sent through the channel is the one sent by the
+server. The `async with` block starts the server by awaiting `asend(None)`,
+which blocks until the client is started and waiting for the first item to
+receive. When execution flows off the `async with` block, the server is
+closed by awaiting `aclose()`, which causes the waiting client to raise
+`StopAsyncIteration`.
 
-This is where `sender` comes in. We use the `async with` syntax to open the channel for writing and to make sure that it will be closed afterwards:
+
+## The purpose of channels
+
+Although the possibility to send values in both directions can be useful in
+certain situations, it is not what makes channels interesting, or why we need
+them. The purpose of a channel lies in the fact that it reverses the
+directions, so to speak, in which the client and server generators send and
+yield values.
+
+### Using a channel to push into a pipeline
+
+If a value is sent into the server generator, it is yielded by
+the client generator. Which means you can pass the client generator to your own
+asynchronous generator function, and have that function pull values out of
+the channel, process them, and yield the results to another generator down
+your processing pipeline. Nevertheless, every time the pipeline requests
+another item from the channel, the producer coroutine that was awaiting the
+result from `server.asend` resumes execution. This means that from the perspective
+of the producer, the pipeline looks like a *reverse* generator. Channels give
+you the power of reverse generator pipelines without actually having to write
+reverse generator functions.
+
+### Refactoring generators into producers and vice-versa
+
+The server context of a channel is designed to mirror the body of an
+asynchronous generator function:
 
 ```python
-async with sender as itemize:
-    await itemize("One")
-    await itemize("Two")
-    await baz(itemize) # pass the itemize callback to another coroutine
-    await itemize("The end")
+
+async with chan as s:
+    a = await s.asend('One')
+    b = await s.asend('Two')
+    c = await s.asend('Three')
+
+async def agen():
+    a = yield 'One'
+    b = yield 'Two'
+    c = yield 'Three'
+
 ```
 
-The `itemize` function behaves more or less like a `yield` statement in a generator: it passes a value to the receiver and waits for the receiver to iterate over it in the `async for` loop. When execution flows off the bottom of the `async with` block, control passes back to the receiver again, which will raise the `StopAsyncIteration` signal to exit from the `async for` loop. This is exactly how a generator function behaves - except that the `itemize` function (and it is your variable to name so you can call it whatever you want) can be passed around as a callback to any coroutine that needs writing access to the channel.
+This resemblance between channels and generator functions allows easy
+refactoring. For example, when there is only one coroutine sending values
+into a channel, and it does not do anything else besides that (as in the
+example above), it should
+be changed into an asynchronous generator function. On the other hand,
+there are certain limitations that asynchronous generator functions have
+which can make them unwieldy. If more and more functions need to be turned
+into generator functions because they need to `yield` to other generators,
+or if the code is full of `while True: f((yield))` loops instead of
+`async for x: f(x)` loops, refactoring generator functions into channels
+may be desirable.
 
-### Further details
+### Pushing into multiple channels from a single routine
 
-See the test script for a full example and the module code for the full interface, including contravariant generic types for the context manager and callback function.
+Channels allow greater flexibility because you can send values
+into different channels from within a single function or loop, whereas an
+asynchronous generator function shares the limitation with synchronous
+generators that it can only yield to the same generator object.
+
+### Efficient delegation to another producers
+
+Asynchronous generator functions do not support `yield from g` in order
+to delegate to another generator. Instead, you have to write
+`async for x in g: yield x` (in the simplex case) which means that the event
+loop has to jump in and out of the delegating generator every time
+before it jumps into the producing generator, since the semantics of your
+code requires that the value of `x` be updated on every iteration.
+By contrast, the object returned by a channel when you use `async with` may
+be passed onward to delegate production to another coroutine, as shown in the
+first example at the top of this document.

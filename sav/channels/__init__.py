@@ -1,45 +1,47 @@
-"""Point-to-point object streams between coroutines"""
-from __future__ import annotations
-from contextlib import suppress, asynccontextmanager
-from typing import (TypeVar, AsyncGenerator, Generic, AsyncContextManager,
-                    Callable, Awaitable, AsyncIterator)
-from asyncio import Future, get_running_loop, CancelledError
+"""Point-to-point object streams between coroutines."""
+import asyncio
 
-__all__ = ['AsyncItemize', 'AsyncItemizer', 'Channel']
-
-T = TypeVar('T')
-T_co = TypeVar('T_co', covariant=True)
-T_contra = TypeVar('T_contra', contravariant=True)
-
-# Public types for co- and contravariant typing
-AsyncItemize = Callable[[T_contra], Awaitable[None]]
-AsyncItemizer = AsyncContextManager[AsyncItemize[T_contra]]
+__all__ = ['Channel']
 
 
-class Channel(Generic[T]):
-    """Rendezvous channel between two coroutines"""
+def _fgen():
+    """Yield futures and set sent values as their results."""
+    create_future = asyncio.get_running_loop().create_future
+    aitem = create_future()
+    try:
+        while True:
+            aitem.set_result((yield aitem))
+            aitem = create_future()
+    finally:
+        aitem.cancel()
 
-    sender: AsyncItemizer[T]
-    receiver: AsyncIterator[T]
 
-    def __init__(self):
-        self._create = get_running_loop().create_future
-        self._pull = self._create()
-        self.sender = self._sender()
-        self.receiver = self._receiver()
+async def _agen(gen, aitem):
+    """Asynchronous generator adapter."""
+    send = gen.send
+    try:
+        while True:
+            aitem = send((yield await aitem))
+    except asyncio.CancelledError:
+        pass
+    except GeneratorExit:
+        gen.close()
 
-    @asynccontextmanager
-    async def _sender(self) -> AsyncGenerator[AsyncItemize[T], None]:
-        async def send(item):
-            (await self._pull).set_result(item)
-            self._pull = self._create()
-        try:
-            yield send
-        finally:
-            (await self._pull).cancel()
 
-    async def _receiver(self) -> AsyncIterator[T]:
-        with suppress(CancelledError):
-            for push in iter(self._create, None):
-                self._pull.set_result(push)
-                yield await push
+class Channel:
+    """Rendezvous channel between two coroutines."""
+
+    def __init__(self, cli_call=_agen, ser_call=_agen):
+        gen = _fgen()
+        self.server = ser_call(gen, gen.send(None))
+        self.client = cli_call(gen, gen.send(None))
+
+    def __aiter__(self):
+        return self.client
+
+    async def __aenter__(self):
+        await self.server.asend(None)
+        return self.server
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self.server.aclose()
