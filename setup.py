@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="sav.channels",
-    version="0.3",
+    version="0.4",
     author="Sander Voerman",
     author_email="sander@savoerman.nl",
     description="Iterable streams between coroutines",
@@ -14,7 +14,7 @@ setuptools.setup(
     url="https://github.com/sandervoerman/channels",
     packages=['sav.channels'],
     package_data={
-        'sav.channels': ['py.typed', '__init__.pyi'],
+        'sav.channels': ['py.typed'],
     },
     python_requires='>=3.7',
     classifiers=[

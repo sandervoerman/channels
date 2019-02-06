@@ -1,47 +1,41 @@
 """Point-to-point object streams between coroutines."""
-import asyncio
+from __future__ import annotations
+from contextlib import suppress
+from typing import TypeVar, AsyncGenerator
 
-__all__ = ['Channel']
+from .abc import AbstractChannel, ChannelClosed
+from .streams import Reader, Writer
 
-
-def _fgen():
-    """Yield futures and set sent values as their results."""
-    create_future = asyncio.get_running_loop().create_future
-    aitem = create_future()
-    try:
-        while True:
-            aitem.set_result((yield aitem))
-            aitem = create_future()
-    finally:
-        aitem.cancel()
+_T = TypeVar('_T')
+_U = TypeVar('_U')
 
 
-async def _agen(gen, aitem):
-    """Asynchronous generator adapter."""
-    send = gen.send
-    try:
-        while True:
-            aitem = send((yield await aitem))
-    except asyncio.CancelledError:
-        pass
-    except GeneratorExit:
-        gen.close()
+class Channel(AbstractChannel[AsyncGenerator[_T, _U], AsyncGenerator[_U, _T]]):
+    async def client(self) -> AsyncGenerator[_T, _U]:
+        req = None
+        send = self._alt.send
+        with suppress(ChannelClosed):
+            while True:
+                req = yield await send(req)
+
+    async def _server(self) -> AsyncGenerator[_U, _T]:
+        req = None
+        send = self._alt.send
+        try:
+            while True:
+                req = await send((yield req))
+        finally:
+            self._alt.close()
+
+    async def start_server(self, req) -> AsyncGenerator[_U, _T]:
+        ser = self._server()
+        await ser.asend(None)
+        return ser
 
 
-class Channel:
-    """Rendezvous channel between two coroutines."""
+class StreamChannel(AbstractChannel[Reader[_T], Writer[_T]]):
+    def client(self) -> Reader[_T]:
+        return Reader(self._alt)
 
-    def __init__(self, cli_call=_agen, ser_call=_agen):
-        gen = _fgen()
-        self.server = ser_call(gen, gen.send(None))
-        self.client = cli_call(gen, gen.send(None))
-
-    def __aiter__(self):
-        return self.client
-
-    async def __aenter__(self):
-        await self.server.asend(None)
-        return self.server
-
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        await self.server.aclose()
+    async def start_server(self, req) -> Writer[_T]:
+        return Writer(self._alt, req)

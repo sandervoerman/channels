@@ -1,9 +1,9 @@
 # Channels: Python iterator streams between coroutines
 
-This package provides a simple and easy to use `Channel` class to stream objects
-between coroutines.
+This package provides a simple and easy to use `Channel` class to send and
+receive objects between coroutines.
 
-Version 0.3, copyright &copy; [Sander Voerman](sander@savoerman.nl), 2019.
+Version 0.4, copyright &copy; [Sander Voerman](sander@savoerman.nl), 2019.
 
 
 ## Installation
@@ -20,18 +20,20 @@ send and receive objects.
 
 ### Simplex example
 
-In the case where objects are sent in only one direction, the channel may be
-opened using `async with` in the producing coroutine and `async for` in the
-consuming coroutine:
+Every channel consists of a client and a server end. In the case where objects
+are sent in only one direction, the `client()` method returns the receiving
+end, which can be iterated over using `async for`. The `server` method returns
+a context manager that can be opened and closed using `async with` in the
+producing coroutine:
 
 ```python
 import asyncio
-from typing import AsyncGenerator
+from typing import AsyncIterator, AsyncGenerator
 from sav.channels import Channel
 from foo import Foo
 
 async def produce(channel: Channel[Foo, None]) -> None:
-    async with channel as server:
+    async with channel.server() as server:
         await server.asend(Foo("One"))
         await produce_two(server)
         await server.asend(Foo("Three"))
@@ -39,26 +41,23 @@ async def produce(channel: Channel[Foo, None]) -> None:
 async def produce_two(server: AsyncGenerator[None, Foo]) -> None:
     await server.asend(Foo("Two"))
 
-async def consume(channel: Channel[Foo, None]) -> None:    
-    async for foo in channel:
+async def consume(client: AsyncIterator[Foo]) -> None:    
+    async for foo in client:
         print(foo)      
 
 async def main() -> None:
     channel = Channel()
-    await asyncio.gather(consume(channel), produce(channel))
+    await asyncio.gather(consume(channel.client()), produce(channel))
 
 asyncio.run(main())
 ```
 
 ### Duplex example
 
-The objects returned by `channel` when `async for` and `async with` invoke
-the `__aiter__` and `__aenter__` methods are also accessible as the
-instance attributes `channel.client` and `channel.server`, respectively. Both
-objects are
-[asynchronous generators](https://www.python.org/dev/peps/pep-0525/).
-The following example demonstrates how data flows through the channel in both
-directions:
+The objects returned by `channel.client()` and `async with channel.server()`
+are both [asynchronous generators](https://www.python.org/dev/peps/pep-0525/)
+which support communication in both directions. The following example
+demonstrates how data flows through the channel in both directions:
 
 ```python
 import asyncio
@@ -66,13 +65,12 @@ import itertools
 from sav.channels import Channel
 
 async def letters(channel: Channel[str, int]) -> None:
-    asend = channel.server.asend
-    async with channel:            # wait for the client
-        print(await asend("A"))    # send and receive
-        print(await asend("B"))    # send and receive
+    async with channel.server() as s:            # wait for the client
+        print(await s.asend("A"))    # send and receive
+        print(await s.asend("B"))    # send and receive
 
 async def numbers(channel: Channel[str, int]) -> None:
-    asend = channel.client.asend
+    asend = channel.client().asend
     try:
         print(await asend(None))   # receive only
         for i in itertools.count():
@@ -132,7 +130,7 @@ asynchronous generator function:
 
 ```python
 
-async with chan as s:
+async with chan.server() as s:
     a = await s.asend('One')
     b = await s.asend('Two')
     c = await s.asend('Three')
@@ -174,3 +172,11 @@ code requires that the value of `x` be updated on every iteration.
 By contrast, the object returned by a channel when you use `async with` may
 be passed onward to delegate production to another coroutine, as shown in the
 first example at the top of this document.
+
+
+## Combining asynchronous and synchronous iteration
+
+The `StreamChannel` class provides additional reading and writing methods
+that allow sending multiple items, or even synchronous unsized iterators,
+through the channel without passing control back to the event loop for
+every single item.
