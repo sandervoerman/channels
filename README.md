@@ -3,7 +3,7 @@
 This package provides a simple and easy to use `Channel` class to send and
 receive objects between coroutines.
 
-Version 0.4, copyright &copy; [Sander Voerman](sander@savoerman.nl), 2019.
+Version 0.5, copyright &copy; [Sander Voerman](sander@savoerman.nl), 2019.
 
 
 ## Installation
