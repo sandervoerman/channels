@@ -13,9 +13,17 @@ class ChannelClosed(Exception):
     pass
 
 
-class AbstractChannel(Generic[_T_co, _U_co]):
-    _req = _SERVER
+def _alternator() -> Generator[Awaitable, Any, None]:
+    fut = None
+    try:
+        for fut in starmap(get_running_loop().create_future, repeat(())):
+            fut.set_result((yield fut))
+    finally:
+        if fut is not None:
+            fut.set_exception(ChannelClosed)
 
+
+class AbstractChannel(Generic[_T_co, _U_co]):
     """Channel base class.
 
     When a value is sent into the alternator, it is set as the result of
@@ -32,34 +40,18 @@ class AbstractChannel(Generic[_T_co, _U_co]):
     """
 
     def __init__(self):
-        alt = self.alternator()
-        alt.send(None)
-        self._alt = alt
-
-    def alternator(self) -> Generator[Awaitable, Any, None]:
-        fut = None
-        try:
-            self._req = yield
-            for fut in starmap(get_running_loop().create_future, repeat(())):
-                fut.set_result((yield fut))
-        finally:
-            if fut is not None:
-                fut.set_exception(ChannelClosed)
+        self._alt = _alternator()
 
     @abstractmethod
     def client(self) -> _T_co:
         raise NotImplementedError
 
     @abstractmethod
-    async def start_server(self, req: Any) -> _U_co:
+    async def start_server(self) -> _U_co:
         raise NotImplementedError
 
     @asynccontextmanager
     async def server(self) -> AsyncIterator[_U_co]:
-        req = self._req
-        if req is _SERVER:
-            req = await next(self._alt)
-        ser = await self.start_server(req)
-        del self._req
+        ser = await self.start_server()
         yield ser
         await ser.aclose()
