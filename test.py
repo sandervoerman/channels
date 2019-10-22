@@ -2,8 +2,8 @@ from __future__ import annotations
 import asyncio
 import itertools
 from typing import AsyncIterator, AsyncContextManager, AsyncGenerator, Callable
-from unittest import TestCase
-from sav.channels import Reader, Writer, AbstractChannel, Channel, StreamChannel
+from unittest import IsolatedAsyncioTestCase
+from sav.channels import Reader, Writer, Channel, StreamChannel
 
 
 async def simplex_consume(items: AsyncIterator[str]):
@@ -66,16 +66,16 @@ async def duplex_main():
     return duplex_results
 
 
-class TestChannel(TestCase):
+class TestChannel(IsolatedAsyncioTestCase):
 
-    def test_simplex(self):
-        self.assertEqual(asyncio.run(simplex_main(Channel)),
-                         ['Combining: Item 1 Item 2',
-                          'Combining: Item 3 Item 4'])
+    async def test_simplex(self):
+        result = await simplex_main(Channel)
+        self.assertEqual(result, ['Combining: Item 1 Item 2',
+                                  'Combining: Item 3 Item 4'])
 
-    def test_duplex(self):
-        self.assertEqual(asyncio.run(duplex_main()),
-                         ['A', 0, 'B', 1])
+    async def test_duplex(self):
+        result = await duplex_main()
+        self.assertEqual(result, ['A', 0, 'B', 1])
 
 
 async def stream_read_all(reader: Reader):
@@ -84,12 +84,19 @@ async def stream_read_all(reader: Reader):
 
 async def stream_write(cm: AsyncContextManager[Writer]):
     async with cm as writer:
-        writer.write_items(range(10))
+        await writer.write_items(range(10))
 
 
-class TestStreamChannel(TestCase):
+class TestStreamChannel(IsolatedAsyncioTestCase):
 
-    def test_simplex(self):
-        self.assertEqual(asyncio.run(simplex_main(StreamChannel)),
-                         ['Combining: Item 1 Item 2',
-                          'Combining: Item 3 Item 4'])
+    async def test_simplex(self):
+        result = await simplex_main(StreamChannel)
+        self.assertEqual(result, ['Combining: Item 1 Item 2',
+                                  'Combining: Item 3 Item 4'])
+
+    async def test_read_all(self):
+        chan = StreamChannel()
+        result, _ = await asyncio.gather(stream_read_all(chan.client()),
+                                         stream_write(chan.server()))
+        self.assertEqual(result, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+
