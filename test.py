@@ -1,102 +1,71 @@
 from __future__ import annotations
-import asyncio
-import itertools
-from typing import AsyncIterator, AsyncContextManager, AsyncGenerator, Callable
+from asyncio import gather
+from itertools import count
+from typing import AsyncIterator, List
 from unittest import IsolatedAsyncioTestCase
-from sav.channels import Reader, Writer, Channel, StreamChannel
+from sav.channels import Channel, StreamChannel
 
 
-async def simplex_consume(items: AsyncIterator[str]):
-    results = []
-    async for item in simplex_transform(items):
-        results.append(item)
-    return results
+class TestChannels(IsolatedAsyncioTestCase):
 
+    async def test_pipe(self):
+        async def produce(channel) -> None:
+            async with channel.server() as sender:
+                send_item = sender.asend
+                await send_item("Item 1")
+                await send_item("Item 2")
+                await send_item("Item 3")
+                await send_item("Item 4")
 
-async def simplex_transform(items: AsyncIterator[str]):
-    t = None
-    async for item in items:
-        if t is None:
-            t = ['Combining:', item]
-        else:
-            t.append(item)
-            s = ' '.join(t)
-            yield s
+        async def transform(channel) -> AsyncIterator[str]:
             t = None
+            async for item in channel.client():
+                if t is None:
+                    t = ['Combining:', item]
+                else:
+                    t.append(item)
+                    s = ' '.join(t)
+                    yield s
+                    t = None
 
+        async def consume(channel) -> List[str]:
+            return [s async for s in transform(channel)]
 
-async def simplex_produce(cm: AsyncContextManager[AsyncGenerator[None, str]]):
-    async with cm as sender:
-        send_item = sender.asend
-        await send_item("Item 1")
-        await send_item("Item 2")
-        await send_item("Item 3")
-        await send_item("Item 4")
+        for cls in Channel, StreamChannel:
+            with self.subTest(cls=cls):
+                c = cls()
+                _, result = await gather(produce(c), consume(c))
+                self.assertEqual(result, ['Combining: Item 1 Item 2',
+                                          'Combining: Item 3 Item 4'])
 
+    async def test_stream(self):
+        async def write(channel):
+            async with channel.server() as writer:
+                await writer.write_items(range(10))
 
-async def simplex_main(factory: Callable):
-    c = factory()
-    _, consumed = await asyncio.gather(simplex_produce(c.server()),
-                                       simplex_consume(c.client()))
-    return consumed
+        async def read_all(channel):
+            return await channel.client().read_items()
 
-
-duplex_results = []
-
-
-async def duplex_letters(cm: AsyncContextManager[AsyncGenerator[int, str]]):
-    async with cm as server:
-        duplex_results.append(await server.asend("A"))
-        duplex_results.append(await server.asend("B"))
-
-
-async def duplex_numbers(client: AsyncGenerator[str, int]):
-    try:
-        duplex_results.append(await client.__anext__())
-        for i in itertools.count():
-            duplex_results.append(await client.asend(i))
-    except StopAsyncIteration:
-        pass
-
-
-async def duplex_main():
-    channel = Channel()
-    client, cm = channel.client(), channel.server()
-    await asyncio.gather(duplex_letters(cm), duplex_numbers(client))
-    return duplex_results
-
-
-class TestChannel(IsolatedAsyncioTestCase):
-
-    async def test_simplex(self):
-        result = await simplex_main(Channel)
-        self.assertEqual(result, ['Combining: Item 1 Item 2',
-                                  'Combining: Item 3 Item 4'])
+        c = StreamChannel()
+        result, _ = await gather(read_all(c), write(c))
+        self.assertEqual(result, list(range(10)))
 
     async def test_duplex(self):
-        result = await duplex_main()
-        self.assertEqual(result, ['A', 0, 'B', 1])
+        async def letters(channel, result):
+            async with channel.server() as server:
+                result.append(await server.asend("A"))
+                result.append(await server.asend("B"))
 
+        async def numbers(channel, result):
+            client = channel.client()
+            try:
+                result.append(await client.__anext__())
+                for i in count():
+                    result.append(await client.asend(i))
+            except StopAsyncIteration:
+                pass
 
-async def stream_read_all(reader: Reader):
-    return await reader.read_items()
-
-
-async def stream_write(cm: AsyncContextManager[Writer]):
-    async with cm as writer:
-        await writer.write_items(range(10))
-
-
-class TestStreamChannel(IsolatedAsyncioTestCase):
-
-    async def test_simplex(self):
-        result = await simplex_main(StreamChannel)
-        self.assertEqual(result, ['Combining: Item 1 Item 2',
-                                  'Combining: Item 3 Item 4'])
-
-    async def test_read_all(self):
-        chan = StreamChannel()
-        result, _ = await asyncio.gather(stream_read_all(chan.client()),
-                                         stream_write(chan.server()))
-        self.assertEqual(result, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        c, r = Channel(), []
+        await gather(letters(c, r), numbers(c, r))
+        self.assertEqual(r, ['A', 0, 'B', 1])
 
