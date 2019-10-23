@@ -37,7 +37,7 @@ class Reader(Generic[_T_co]):
         return self._itemizer
 
     async def read_once(self) -> Iterator[_T_co]:
-        return await self._itemizer.__anext__()
+        return await self._fetcher.__anext__()
 
     async def read_items(self, n: int = -1) -> Sequence[_T_co]:
         buf = []
