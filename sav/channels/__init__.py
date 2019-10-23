@@ -1,9 +1,8 @@
 """Point-to-point object streams between coroutines."""
 from __future__ import annotations
-from inspect import getgeneratorstate, GEN_CREATED
 from typing import TypeVar, AsyncGenerator
 
-from .abc import AbstractChannel, ChannelClosed
+from .abc import AbstractChannel, ChannelClosed, FutureEnd
 from .streams import Reader, Writer
 
 _T = TypeVar('_T')
@@ -16,19 +15,24 @@ class Channel(AbstractChannel[AsyncGenerator[_T, _U], AsyncGenerator[_U, _T]]):
 
     async def _generate(self, is_server) -> AsyncGenerator:
         msg = None
-        send = self._alt.send
+        end = self._connect()
         try:
             if is_server:
-                if getgeneratorstate(self._alt) == GEN_CREATED:
-                    await next(self._alt)
+                await end.start_server()
                 msg = yield
 
-            while True:
-                msg = yield await send(msg)
+            else:
+                end.open()
+
+            for setter, waiter in end.zipped():
+                setter.set_result(msg)
+                msg = yield await waiter
+
         except ChannelClosed:
             pass
-        except GeneratorExit:
-            self._alt.close()
+
+        finally:
+            end.close()
 
     async def start_server(self) -> AsyncGenerator[_U, _T]:
         ser = self._generate(True)
@@ -38,9 +42,9 @@ class Channel(AbstractChannel[AsyncGenerator[_T, _U], AsyncGenerator[_U, _T]]):
 
 class StreamChannel(AbstractChannel[Reader[_T], Writer[_T]]):
     def client(self) -> Reader[_T]:
-        return Reader(self._alt)
+        return Reader(self._connect())
 
     async def start_server(self) -> Writer[_T]:
-        if getgeneratorstate(self._alt) == GEN_CREATED:
-            await next(self._alt)
-        return Writer(self._alt)
+        end = self._connect()
+        await end.start_server()
+        return Writer(end)

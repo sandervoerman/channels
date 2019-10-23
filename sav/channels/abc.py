@@ -1,46 +1,60 @@
+from __future__ import annotations
 from abc import abstractmethod
-from asyncio import get_running_loop
+from asyncio import Future, get_running_loop
 from contextlib import asynccontextmanager
-from itertools import starmap, repeat
-from typing import TypeVar, Generator, Awaitable, Any, Generic, AsyncIterator
+from inspect import getgeneratorstate, GEN_SUSPENDED
+from itertools import repeat, starmap, tee
+from typing import Any, AsyncIterator, Generator, Generic, Iterator, Tuple, TypeVar
 
 _T_co = TypeVar('_T_co', covariant=True)
 _U_co = TypeVar('_U_co', covariant=True)
-_SERVER = object()
+
+
+Connection = Generator[Tuple[Iterator[Future], Iterator[Future]], None, None]
 
 
 class ChannelClosed(Exception):
     pass
 
 
-def _alternator() -> Generator[Awaitable, Any, None]:
-    fut = None
-    try:
-        for fut in starmap(get_running_loop().create_future, repeat(())):
-            fut.set_result((yield fut))
-    finally:
-        if fut is not None:
-            fut.set_exception(ChannelClosed)
+class FutureEnd:
+    setters = None
+    waiters = None
+
+    def __init__(self, con: Connection) -> None:
+        self.con = con
+
+    def open(self) -> None:
+        self.waiters, self.setters = next(self.con)
+
+    async def start_server(self) -> Any:
+        self.open()
+        return await next(self.waiters)
+
+    def close(self) -> None:
+        if getgeneratorstate(self.con) == GEN_SUSPENDED:
+            self.con.close()
+            next(self.setters).set_exception(ChannelClosed)
+
+    def zipped(self) -> Iterator[Tuple[Future, Future]]:
+        return zip(self.setters, self.waiters)
+
+
+def _create_connection() -> Connection:
+    s = starmap(get_running_loop().create_future, repeat(()))
+    a, b = zip(tee(s), tee(s))
+    yield a
+    yield reversed(b)
 
 
 class AbstractChannel(Generic[_T_co, _U_co]):
-    """Channel base class.
-
-    When a value is sent into the alternator, it is set as the result of
-    the previously yielded future, and a new future is returned to the
-    caller. By awaiting the future, the caller prevents itself from getting
-    its own value back, and will instead receive the value sent by the next
-    caller. Hence, the direction in which values are sent and received
-    is alternated upon every iteration.
-
-    The alternator finalizes by setting `ChannelClosed` on the most
-    recently yielded future. When one coroutine closes the alternator, the
-    other coroutine is scheduled to be called soon, and
-    control is passed back to the former coroutine.
-    """
+    """Channel base class."""
 
     def __init__(self):
-        self._alt = _alternator()
+        self._con = _create_connection()
+
+    def _connect(self) -> FutureEnd:
+        return FutureEnd(self._con)
 
     @abstractmethod
     def client(self) -> _T_co:
