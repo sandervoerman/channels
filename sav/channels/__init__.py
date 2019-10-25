@@ -7,14 +7,14 @@ from .futures import ChannelClosed, create_connection, FutureEnd
 from .streams import Reader, Writer
 
 _T = TypeVar('_T')
-_U = TypeVar('_U')
+_V = TypeVar('_V')
 
 
-class Channel(AbstractChannel[AsyncGenerator[_T, _U], AsyncGenerator[_U, _T]]):
+class Channel(AbstractChannel[_T, AsyncGenerator[_T, _V], AsyncGenerator[_V, _T]]):
     def __init__(self):
         self._con = create_connection()
 
-    def client(self) -> AsyncGenerator[_T, _U]:
+    def client(self) -> AsyncGenerator[_T, _V]:
         return self._generate(False)
 
     async def _generate(self, is_server) -> AsyncGenerator:
@@ -38,13 +38,13 @@ class Channel(AbstractChannel[AsyncGenerator[_T, _U], AsyncGenerator[_U, _T]]):
         finally:
             end.close()
 
-    async def start_server(self) -> AsyncGenerator[_U, _T]:
+    async def start_server(self) -> AsyncGenerator[_V, _T]:
         ser = self._generate(True)
         await ser.asend(None)
         return ser
 
 
-class StreamChannel(AbstractChannel[Reader[_T], Writer[_T]]):
+class StreamChannel(AbstractChannel[_T, Reader[_T], Writer[_T]]):
     def __init__(self):
         self._chan = Channel()
 
