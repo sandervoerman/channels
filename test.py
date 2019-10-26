@@ -2,7 +2,7 @@ from __future__ import annotations
 from asyncio import gather
 from itertools import count
 from typing import AsyncIterator, List, TypeVar, Union
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, main
 from sav.channels import Channel, StreamChannel
 
 _T = TypeVar('_T')
@@ -72,3 +72,7 @@ class TestChannels(IsolatedAsyncioTestCase):
         c, r = Channel(), []
         await gather(letters(c, r), numbers(c, r))
         self.assertEqual(r, ['A', 0, 'B', 1])
+
+
+if __name__ == '__main__':
+    main(verbosity=2)
