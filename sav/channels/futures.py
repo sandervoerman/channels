@@ -1,44 +1,51 @@
 from __future__ import annotations
-from asyncio import Future, get_running_loop
-from inspect import getgeneratorstate, GEN_SUSPENDED
-from itertools import repeat, starmap, tee
-from typing import Any, Generator, Iterator, Tuple
+from asyncio import get_running_loop
 
 
-Connection = Generator[Tuple[Iterator[Future], Iterator[Future]], None, None]
+class _Created:
+    def __init__(self, channel):
+        self.channel = channel
+
+    def set_result(self, value):
+        if value is not None:
+            raise TypeError
+        self.channel._create = get_running_loop().create_future
 
 
-class ChannelClosed(Exception):
-    pass
+class _Closed:
+    def set_result(self, value):
+        raise StopAsyncIteration
 
 
-class FutureEnd:
-    setters = None
-    waiters = None
+class SimpleChannel:
+    _create = None
 
-    def __init__(self, con: Connection) -> None:
-        self.con = con
+    def __init__(self):
+        self._fut = _Created(self)
 
-    def open(self) -> None:
-        self.waiters, self.setters = next(self.con)
+    def __aiter__(self):
+        return self
 
-    async def start_server(self) -> Any:
-        self.open()
-        return await next(self.waiters)
+    def _status(self):
+        return type(self._fut)
 
-    def close(self) -> None:
-        if getgeneratorstate(self.con) == GEN_SUSPENDED:
-            self.con.close()
-            next(self.setters).set_exception(ChannelClosed)
+    async def wait(self):
+        if self._status() is _Created:
+            await self.asend(None)
 
-    def zipped(self) -> Iterator[Tuple[Future, Future]]:
-        return zip(self.setters, self.waiters)
+    def __anext__(self):
+        return self.asend(None)
 
+    def asend(self, value):
+        self._fut.set_result(value)
+        self._fut = self._create()
+        return self._fut
 
-def create_connection() -> Connection:
-    s = starmap(get_running_loop().create_future, repeat(()))
-    a, b = zip(tee(s), tee(s))
-    yield a
-    yield reversed(b)
+    async def aclose(self):
+        status = self._status()
+        if status is not _Closed:
+            if status is not _Created:
+                self._fut.set_exception(StopAsyncIteration)
+            self._fut = _Closed()
 
 
