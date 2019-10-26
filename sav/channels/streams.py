@@ -1,8 +1,7 @@
 from __future__ import annotations
 from inspect import getgeneratorstate, GEN_CLOSED
 from itertools import chain, islice
-from typing import (Any, AsyncIterator, AsyncGenerator, Generic, Iterable, Iterator,
-                    Sequence, TypeVar)
+from typing import Any, AsyncIterator,  Generic, Iterable, Iterator, Sequence, TypeVar
 
 _ONCE = object()
 _T = TypeVar('_T')
@@ -25,7 +24,7 @@ async def _itemizer(fet: AsyncIterator[Iterable[_T]]) -> AsyncIterator[_T]:
 
 
 class Reader(Generic[_T_co]):
-    def __init__(self, end: AsyncIterator[Iterable]):
+    def __init__(self, end: Any):
         self._fetcher = fet = _fetcher(end)
         self._itemizer = _itemizer(fet)
 
@@ -55,7 +54,7 @@ class Reader(Generic[_T_co]):
 
 
 class Writer(Generic[_T_contra]):
-    def __init__(self, end: AsyncGenerator[Any, Iterable]):
+    def __init__(self, end: Any):
         self._end = end
         self._send = end.asend
 
