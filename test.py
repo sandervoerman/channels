@@ -14,8 +14,8 @@ class TestChannels(IsolatedAsyncioTestCase):
 
     async def test_pipe(self):
         async def produce(channel: SimplexChannel[str]) -> None:
-            async with channel as sender:
-                send_item = sender.asend
+            async with channel:
+                send_item = channel.asend
                 await send_item("Item 1")
                 await send_item("Item 2")
                 await send_item("Item 3")
@@ -37,18 +37,18 @@ class TestChannels(IsolatedAsyncioTestCase):
 
         for cls in Channel, StreamChannel:
             with self.subTest(cls=cls):
-                c: SimplexChannel = cls()
+                c: SimplexChannel[str] = cls()
                 _, result = await gather(produce(c), consume(c))
                 self.assertEqual(result, ['Combining: Item 1 Item 2',
                                           'Combining: Item 3 Item 4'])
 
     async def test_stream(self):
         async def write(channel: StreamChannel[int]) -> None:
-            async with channel as writer:
-                await writer.write_items(range(10))
+            async with channel:
+                await channel.write_items(range(10))
 
         async def read_all(channel: StreamChannel[int]):
-            return await channel.client().read_items()
+            return await channel.read_items()
 
         c = StreamChannel()
         result, _ = await gather(read_all(c), write(c))
@@ -56,16 +56,15 @@ class TestChannels(IsolatedAsyncioTestCase):
 
     async def test_duplex(self):
         async def letters(channel: Channel[str, int], result: List[Union[str, int]]):
-            async with channel as server:
-                result.append(await server.asend("A"))
-                result.append(await server.asend("B"))
+            async with channel:
+                result.append(await channel.asend("A"))
+                result.append(await channel.asend("B"))
 
         async def numbers(channel: Channel[str, int], result: List[Union[str, int]]):
-            client = channel.client()
             try:
-                result.append(await client.__anext__())
+                result.append(await channel.__anext__())
                 for i in count():
-                    result.append(await client.asend(i))
+                    result.append(await channel.asend(i))
             except StopAsyncIteration:
                 pass
 
