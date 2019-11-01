@@ -9,6 +9,7 @@ _V = TypeVar('_V')
 
 
 class AbstractChannel(Generic[_T, _V]):
+    """The core channel API."""
     def __aiter__(self: _C) -> _C:
         return self
 

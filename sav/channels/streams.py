@@ -13,6 +13,14 @@ _T = TypeVar('_T')
 
 
 class StreamChannel(AbstractChannel[_T, None]):
+    """Combining asynchronous and synchronous iteration.
+
+    This class provides additional reading and writing methods that
+    allow sending multiple items, or even synchronous unsized iterators,
+    through the channel without passing control back to the event loop
+    for every single item.
+    """
+
     def __init__(self):
         self._chan = chan = Channel()
         self._send = chan.asend
