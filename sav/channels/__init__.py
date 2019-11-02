@@ -146,7 +146,8 @@ object returned by a channel when you use ``async with`` may be passed
 onward to delegate production to another coroutine.
 """
 
+from .abc import AbstractChannel
 from .futures import Channel
 from .streams import StreamChannel
 
-__ALL__ = ['Channel', 'StreamChannel']
+__ALL__ = ['AbstractChannel', 'Channel', 'StreamChannel']

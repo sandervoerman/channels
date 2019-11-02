@@ -70,17 +70,15 @@ class Channel(AbstractChannel[_T, _V]):
         from sav.channels import Channel
 
         async def letters(c: Channel[str, int]) -> None:
-            async with c:                    # wait
+            async with c.open(wait=True):    # wait
                 print(await c.asend("A"))    # send and receive
                 print(await c.asend("B"))    # send and receive
 
         async def numbers(c: Channel[str, int]) -> None:
-            try:
+            async with c.open(wait=False):   # don't wait
                 print(await c.asend(None))   # receive only
                 for i in itertools.count():
                     print(await c.asend(i))  # send and receive
-            except StopAsyncIteration:
-                pass
 
         async def main() -> None:
             c = Channel()
@@ -100,6 +98,7 @@ class Channel(AbstractChannel[_T, _V]):
     _fut: Any = _Created
 
     def __init__(self):
+        super().__init__()
         self._create_future: Callable[[], Future] = self._create_first_future
 
     def _create_first_future(self) -> Future:

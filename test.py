@@ -56,17 +56,15 @@ class TestChannels(IsolatedAsyncioTestCase):
 
     async def test_duplex(self):
         async def letters(channel: Channel[str, int], result: List[Union[str, int]]):
-            async with channel:
+            async with channel.open(wait=True):
                 result.append(await channel.asend("A"))
                 result.append(await channel.asend("B"))
 
         async def numbers(channel: Channel[str, int], result: List[Union[str, int]]):
-            try:
+            async with channel.open(wait=False):
                 result.append(await channel.__anext__())
                 for i in count():
                     result.append(await channel.asend(i))
-            except StopAsyncIteration:
-                pass
 
         c, r = Channel(), []
         await gather(letters(c, r), numbers(c, r))

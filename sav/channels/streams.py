@@ -22,6 +22,7 @@ class StreamChannel(AbstractChannel[_T, None]):
     """
 
     def __init__(self):
+        super().__init__()
         self._chan = chan = Channel()
         self._send = chan.asend
         self._fetcher = fet = self._fetch()
