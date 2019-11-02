@@ -140,12 +140,10 @@ Efficient delegation to another producer
 Asynchronous generator functions do not support ``yield from g`` in
 order to delegate to another generator. Instead, you have to write
 ``async for x in g: yield x`` (in the simplex case) which means that the
-event loop has to jump in and out of the delegating generator every time
-before it jumps into the producing generator, since the semantics of
-your code requires that the value of ``x`` be updated on every
-iteration. By contrast, the object returned by a channel when you use
-``async with`` may be passed onward to delegate production to another
-coroutine.
+control flow has to jump in and out of the delegating generator every
+time before it jumps into the producing generator. By contrast, the
+object returned by a channel when you use ``async with`` may be passed
+onward to delegate production to another coroutine.
 """
 
 from .futures import Channel
