@@ -8,7 +8,7 @@ setuptools.setup(
     version="0.5",
     author="Sander Voerman",
     author_email="sander@savoerman.nl",
-    description="Iterable streams between coroutines",
+    description="Channels between coroutines",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/sandervoerman/channels",

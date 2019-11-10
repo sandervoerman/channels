@@ -1,20 +1,14 @@
 """Channels between coroutines.
 
-This package provides a simple and easy to use :class:`Channel` class to
-send and receive objects between coroutines with async/await syntax.
-It also provides a :class:`StreamChannel` class with methods for
-synchronously reading, writing, or generating multiple items on the fly
-during a single rendez-vous between the connected coroutines.
-
-
 What is a channel?
 ==================
-Channels are generic streams between routines that push objects into
-those streams, and concurrently running routines that pull those objects
-out again. The purpose of channels is synchronization: every time the
-receiving routine tries to pull an object out of a channel, its
-execution is suspended until another routine sends an object into that
-channel, at which point the receiving routine resumes.
+A channel is a pair of asynchronous generators, such that objects which
+are sent into one of them will be yielded by the other, and vice-versa.
+
+The purpose of channels is synchronization: every time the receiving
+routine tries to pull an object out of a channel, its execution is
+suspended until another routine sends an object into that channel, at
+which point the receiving routine resumes.
 
 Influential concurrent languages like CSP_, occam_ and Go_ have adopted
 channels as a fundamental construct in their concurrency model. In the
@@ -28,8 +22,8 @@ asynchronous generators (:pep:`525`).
 .. _Go: https://tour.golang.org/concurrency/2
 
 
-Channels versus generators
---------------------------
+Channels versus generator functions
+-----------------------------------
 Like channels, generators are generic streams that alternatingly suspend
 and resume routines at both ends of the stream. In the case of a
 generator, however, one end of the stream is always tied to the
@@ -37,17 +31,16 @@ generator function, which is the only routine that can access the stream
 from that end.
 
 In the case of a channel, there are no ``yield`` expressions at either
-end to communicate with the other end. Instead, coroutines at both ends
-await the same methods of the channel. These methods resemble those of
-an asynchronous generator iterator, including ``asend()`` for sending
-or duplexing and ``__aiter__()`` for asynchronous iteration. Thus, you
-can run an ``async for`` loop at one end of a channel and call
-``asend()`` from the other end to feed that loop.
+end to communicate with the other end. That is why this package
+implements channels for Python as a pair of generators: the yield
+expressions are hidden inside the implementation, and the coroutines
+at both ends of the channel interact with the methods of a generator
+object.
 
 Awaiting ``asend()`` from one end always blocks until a second caller
-awaits ``asend()``, or one of the channel's other methods, establishing
-a rendez-vous between the two awaiting coroutines. The value sent by the
-second caller is then scheduled to be returned to the first caller. This
+awaits ``asend()`` from the other end, establishing a rendez-vous
+between the two awaiting coroutines. The value sent by the second
+caller is then scheduled to be returned to the first caller. This
 creates the same back-and-forth synchronization pattern that a generator
 would create, with the added flexibility that you can send values into
 different channels from the same coroutine.
@@ -87,9 +80,8 @@ your processing pipeline. From the perspective of this pipeline, the
 channel simply behaves like an upstream generator.
 
 Nevertheless, every time the pipeline requests another item from the
-channel, the producer coroutine that was awaiting the result from
-:meth:``Channel.asend`` resumes execution. This means that from the
-perspective of the producer, the channel looks like a *reverse*
+channel, the producer coroutine resumes execution. This means that from
+the perspective of the producer, it is interacting with a *reverse*
 generator. Channels give you the power of reverse generator pipelines
 without actually having to write reverse generator functions.
 
@@ -105,7 +97,7 @@ Refactoring generators into producers and vice-versa
 The context manager of a channel is designed to mirror the body of an
 asynchronous generator function::
 
-    async with ch:
+    async with channels.open(ch):
         a = await ch.asend('One')
         b = await ch.asend('Two')
         c = await ch.asend('Three')
@@ -144,10 +136,166 @@ control flow has to jump in and out of the delegating generator every
 time before it jumps into the producing generator. By contrast, the
 object returned by a channel when you use ``async with`` may be passed
 onward to delegate production to another coroutine.
+
+
+Bidirectional data flows
+========================
+The following example demonstrates how data flows through the
+channel in the case of bidirectional communication::
+
+    import asyncio
+    import itertools
+    from typing import AsyncGenerator
+    from sav import channels
+
+    async def numbers(c: AsyncGenerator[str, int]) -> None:
+        async with channels.open(c):     # don't wait
+            print(await c.asend(None))   # receive only
+            for i in itertools.count():
+                print(await c.asend(i))  # send and receive
+
+    async def letters(c: AsyncGenerator[int, str]) -> None:
+        async with channels.open(c):     # wait
+            print(await c.asend("A"))    # send and receive
+            print(await c.asend("B"))    # send and receive
+
+    async def main() -> None:
+        c_left, c_right = channels.create()
+        await asyncio.gather(numbers(c_left), letters(c_right))
+
+    asyncio.run(main())
+
+This will produce the result::
+
+    A
+    0
+    B
+    1
+
+
+Opening and closing generator connections
+=========================================
+
+While asynchronous iteration only requires a single line of code,
+connecting to a *reverse* or *bidirectional* asynchronous generator
+typically involves several lines of boilerplate code. The following
+example shows how you might need eight lines of code to send a
+single message into a generator::
+
+    try:                               # connect to a generator
+        ag = my_ag()                       # create it
+        await ag.asend(None)               # start it
+        await ag.asend('Hello world!')     # send it a message
+    except StopAsyncIteration:         # when it returns
+        pass                               # clear exception
+    finally:                           # when it keeps running
+        await ag.aclose()                  # close it
+
+
+With channels.open() this example may be rewritten as follows::
+
+    async with channels.open(my_ag()) as ag:
+        await ag.asend('Hello world!')
+
 """
 
-from .abc import AbstractChannel
-from .futures import Channel
-from .streams import StreamChannel
+from __future__ import annotations
+from asyncio import get_running_loop
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Tuple, TypeVar
+from .streams import Reader, Writer
 
-__ALL__ = ['AbstractChannel', 'Channel', 'StreamChannel']
+__ALL__ = ['create', 'open', 'stream', 'Reader', 'Writer']
+
+_AG = TypeVar('_AG', bound=AsyncGenerator)
+
+
+def create() -> Tuple[AsyncGenerator, AsyncGenerator]:
+    """Create a new channel.
+
+    :returns: A connected pair of asynchronous generators.
+
+    Each generator waits, when first iterated over, until the other is
+    first iterated over as well. The second generator is then
+    scheduled to yield None. When the next call to the second generator
+    is made, the value sent into it is scheduled to be yielded by the
+    first generator.
+
+    When one of the two generators is closed, the other generator will
+    be scheduled to raise StopAsyncIteration.
+    """
+
+    fut = None
+
+    async def generate(wait: bool) -> AsyncGenerator:
+        nonlocal fut
+        try:
+            if fut is not None:
+                fut.set_result((yield) if wait else None)
+
+            f = get_running_loop().create_future
+            while True:
+                item = await (fut := f())
+                fut.set_result((yield item))
+
+        except EOFError:
+            pass
+
+        except GeneratorExit:
+            fut.set_exception(EOFError)
+
+    return generate(False), generate(True)
+
+
+@asynccontextmanager
+async def open(ag: _AG, *, start: bool = True, clear: bool = True,
+               close: bool = True) -> AsyncGenerator[_AG, None]:
+    """Wrap an async context manager around an async generator.
+
+    :returns:      An asynchronous context manager that handles the
+                   startup and cleanup for an asynchronous generator
+                   connection.
+
+    :param ag:     The asynchronous generator.
+
+    :param start:  Whether the generator should be started before
+                   entering context.
+
+    :param clear:  Whether StopAsyncIteration should be cleared if it
+                   was raised but not caught within the context.
+
+    :param close:  Whether the generator should be closed when the
+                   context is exited.
+    """
+
+    try:
+        if start:
+            await ag.asend(None)
+        yield ag
+
+    except StopAsyncIteration:
+        if not clear:
+            raise
+
+    finally:
+        if close:
+            await ag.aclose()
+
+
+def stream(keep_alive: bool = False) -> Tuple[Reader, Writer]:
+    """Connect a reader/writer pair using a channel.
+
+    :param keep_alive:  Whether the channel should remain open when
+                        the reader context is exited.
+
+    If keep_alive is False (the default), each context will raise
+    StopAsyncIteration in the other context when it exits, and each
+    context will clear StopAsyncIteration upon exit.
+
+    If keep_alive is True, then only the writer context will close the
+    channel upon exit, and the reader becomes a reusable context
+    manager.
+    """
+
+    a, b = create()
+    return Reader(a, keep_alive), Writer(b, keep_alive)

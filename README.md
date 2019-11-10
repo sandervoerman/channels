@@ -1,76 +1,60 @@
-# Channels: Python iterator streams between coroutines
+# Channels between coroutines in Python
+This package provides channels between coroutines with async/await 
+syntax.
 
-This package provides a simple and easy to use `Channel` class to send and
-receive objects between coroutines.
+## What is a channel?
+A channel is a pair of asynchronous generators, such that when an object
+is sent into one generator, it will be yielded by the other generator.
 
-Version 0.5, copyright &copy; [Sander Voerman](sander@savoerman.nl), 2019.
-
-
-## Installation
-
-Install the [sav.channels](https://pypi.org/project/sav.channels/)
-package from the Python Package Index. See
-[installing packages](https://packaging.python.org/tutorials/installing-packages/)
-for further instruction.
-
-## Overview
-
-A channel is a direct connection between two coroutines, through which they can
-send and receive objects. Channels are similar to asynchronous generators, 
-except that you don't need `yield` expressions at either end of a channel to 
-communicate with the other end.
-
-### Example
-
-Suppose you have two coroutines running `async for` loops:
- 
-```python
-async def loop_a(a_items):
-    async for a_item in a_items:
-        ...
-
-async def loop_b(b_items):
-    async for b_item in b_items:
-        ...
-```
-
-In order to feed the first loop with items, you write the following generator
-function. At some point, this function also produces an item for the second
-loop. You would like that loop to resume as soon as the item becomes available: 
+## Example
 
 ```python
-async def gen():
-    yield 'This is the first a-item.'  # yield to loop_a
-    'This is the first b-item'         # need to "yield" this to loop_b
-    yield 'This is another a-item.'
-```
+import asyncio
+from sav import channels
 
-You can solve this problem with a channel:
+# Use channels.create() to create new channels.
+a_receiver, a_sender = channels.create()
+b_receiver, b_sender = channels.create()
 
-```python
-from asyncio import gather, run
-from sav.channels import Channel
+async def send_messages():
+    """Send messages into multiple channels."""
 
-async def loop_a(a_items):
-    ...
+    # Use channels.open() to start the generators that you want to send
+    # values into. Each generator will wait until their channel is
+    # iterated over from the other end.
+    async with channels.open(a_sender), channels.open(b_sender):
 
-async def loop_b(b_items):
-    ...
+        # The content of the async with block is similar to the body of
+        # an asynchronous generator function. However, instead of using
+        # yield statements to generate the values for a single iterator,
+        # we can send different values to different iterators.
+        await a_sender.asend('Hello Arnold.')
+        await b_sender.asend('Hello Bernard.')
+        await a_sender.asend('Goodbye Arnold.')
+        await b_sender.asend('Goodbye Bernard.')
+        
+        # When control flows out of this code block, each context
+        # manager will close the generator it started. Closing a
+        # generator at one end of a channel causes the generator at the
+        # other end to raise StopAsyncIteration. 
 
-async def gen(chan):
-    async with chan:
-        yield 'This is the first a-item.'
-        await chan.asend('This is the first b-item')
-        yield 'This is another a-item.'
+
+async def show_messages(name, receiver):
+    """Show messages from a single channel."""
+    async for message in receiver:
+        print(f'Message for {name}: {message}')    
 
 async def main():
-    chan = Channel()
-    await gather(loop_a(gen(chan)), loop_b(chan))
+    """Run both channels concurrently."""
+    await asyncio.gather(
+        send_messages(),
+        show_messages('Arnold', a_receiver),
+        show_messages('Bernard', b_receiver))
 
-run(main())
+asyncio.run(main())
 ```
 
-### Features
+## Features
 
  * Bidirectional sending and receiving.
  * Easy to refactor from, or into, asynchronous generators.
@@ -82,8 +66,8 @@ run(main())
  * Feed different values to different iterator objects from within a single
    coroutine or asynchronous generator function.  
  * Read or write multiple items at once to avoid cycling through the event loop 
-   for every single item (`StreamChannel` class).
+   for every single item.
  * Delegate item transmission to synchronous generators and read from them in
-   the receiving coroutine (`StreamChannel` class).
+   the receiving coroutine.
  
 See the documentation in the source code for further details and examples.

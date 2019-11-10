@@ -1,29 +1,88 @@
 from __future__ import annotations
-from asyncio import gather
-from itertools import count
-from typing import AsyncIterator, List, TypeVar, Union
-from unittest import IsolatedAsyncioTestCase, main
-from sav.channels import Channel, StreamChannel
+import asyncio
+from io import StringIO
+import itertools
+from typing import (AsyncContextManager, AsyncGenerator, AsyncIterator, List,
+                    TypeVar, Union)
+import unittest
+from sav import channels
 
 _T = TypeVar('_T')
 
-SimplexChannel = Union[Channel[_T, None], StreamChannel[_T]]
+Receiver = Union[AsyncIterator[_T], channels.Reader[_T]]
+Sender = Union[AsyncGenerator[None, _T], channels.Writer[_T]]
+
+def _open(sender: Sender) -> AsyncContextManager:
+    if isinstance(sender, channels.Writer):
+        return sender
+    return channels.open(sender)
 
 
-class TestChannels(IsolatedAsyncioTestCase):
+class TestReadme(unittest.TestCase):
+    def test_example(self):
+        result = StringIO()
+
+        # Use channels.create() to create new channels.
+        a_receiver, a_sender = channels.create()
+        b_receiver, b_sender = channels.create()
+
+        async def send_messages():
+            """Send messages into multiple channels."""
+
+            # Use channels.open() to start the generators that you want to send
+            # values into. Each generator will wait until their channel is
+            # iterated over from the other end.
+            async with channels.open(a_sender), channels.open(b_sender):
+                # The content of the async with block is similar to the body of
+                # an asynchronous generator function. However, instead of using
+                # yield statements to generate the values for a single iterator,
+                # we can send different values to different iterators.
+                await a_sender.asend('Hello Arnold.')
+                await b_sender.asend('Hello Bernard.')
+                await a_sender.asend('Goodbye Arnold.')
+                await b_sender.asend('Goodbye Bernard.')
+
+                # When control flows out of this code block, each context
+                # manager will close the generator it started. Closing a
+                # generator at one end of a channel causes the generator at the
+                # other end to raise StopAsyncIteration.
+
+        async def show_messages(name, receiver):
+            """Show messages from a single channel."""
+            async for message in receiver:
+                print(f'Message for {name}: {message}', file=result)
+
+        async def main():
+            """Run both channels concurrently."""
+            await asyncio.gather(
+                send_messages(),
+                show_messages('Arnold', a_receiver),
+                show_messages('Bernard', b_receiver))
+
+        asyncio.run(main())
+        self.assertEqual(
+            result.getvalue(),
+            'Message for Arnold: Hello Arnold.\n'
+            'Message for Bernard: Hello Bernard.\n'
+            'Message for Arnold: Goodbye Arnold.\n'
+            'Message for Bernard: Goodbye Bernard.\n'
+        )
+
+
+class TestChannels(unittest.IsolatedAsyncioTestCase):
 
     async def test_pipe(self):
-        async def produce(channel: SimplexChannel[str]) -> None:
-            async with channel:
-                send_item = channel.asend
+        async def produce(sender: Sender[str]) -> None:
+            async with _open(sender):
+                send_item = sender.asend
                 await send_item("Item 1")
                 await send_item("Item 2")
                 await send_item("Item 3")
                 await send_item("Item 4")
 
-        async def transform(channel: SimplexChannel[str]) -> AsyncIterator[str]:
+        async def transform(items: Receiver[str]) -> AsyncIterator[str]:
             t = None
-            async for item in channel:
+            async for item in items:
                 if t is None:
                     t = ['Combining:', item]
                 else:
@@ -32,44 +91,46 @@ class TestChannels(IsolatedAsyncioTestCase):
                     yield s
                     t = None
 
-        async def consume(channel: SimplexChannel[str]) -> List[str]:
-            return [s async for s in transform(channel)]
+        async def consume(items: Receiver[str]) -> List[str]:
+            return [s async for s in transform(items)]
 
-        for cls in Channel, StreamChannel:
-            with self.subTest(cls=cls):
-                c: SimplexChannel[str] = cls()
-                _, result = await gather(produce(c), consume(c))
+        for f in channels.create, channels.stream:
+            with self.subTest(f=f):
+                x, y = f()
+                _, result = await asyncio.gather(produce(y), consume(x))
                 self.assertEqual(result, ['Combining: Item 1 Item 2',
                                           'Combining: Item 3 Item 4'])
 
     async def test_stream(self):
-        async def write(channel: StreamChannel[int]) -> None:
+        async def write(channel: channels.Writer[int]) -> None:
             async with channel:
                 await channel.write_items(range(10))
 
-        async def read_all(channel: StreamChannel[int]):
+        async def read_all(channel: channels.Reader[int]):
             return await channel.read_items()
 
-        c = StreamChannel()
-        result, _ = await gather(read_all(c), write(c))
+        r, w = channels.stream()
+        result, _ = await asyncio.gather(read_all(r), write(w))
         self.assertEqual(result, list(range(10)))
 
     async def test_duplex(self):
-        async def letters(channel: Channel[str, int], result: List[Union[str, int]]):
-            async with channel.open(wait=True):
-                result.append(await channel.asend("A"))
-                result.append(await channel.asend("B"))
+        async def letters(g: AsyncGenerator[int, str],
+                          result: List[Union[str, int]]):
+            async with channels.open(g):
+                result.append(await g.asend("A"))
+                result.append(await g.asend("B"))
 
-        async def numbers(channel: Channel[str, int], result: List[Union[str, int]]):
-            async with channel.open(wait=False):
-                result.append(await channel.__anext__())
-                for i in count():
-                    result.append(await channel.asend(i))
+        async def numbers(g: AsyncGenerator[str, int],
+                          result: List[Union[str, int]]):
+            async with channels.open(g):
+                result.append(await g.__anext__())
+                for i in itertools.count():
+                    result.append(await g.asend(i))
 
-        c, r = Channel(), []
-        await gather(letters(c, r), numbers(c, r))
+        c, r = channels.create(), []
+        await asyncio.gather(letters(c[0], r), numbers(c[1], r))
         self.assertEqual(r, ['A', 0, 'B', 1])
 
 
 if __name__ == '__main__':
-    main(verbosity=2)
+    unittest.main(verbosity=2)
