@@ -104,10 +104,10 @@ class TestChannels(unittest.IsolatedAsyncioTestCase):
     async def test_stream(self):
         async def write(channel: channels.Writer[int]) -> None:
             async with channel:
-                await channel.write_items(range(10))
+                await channel.write(range(10))
 
         async def read_all(channel: channels.Reader[int]):
-            return await channel.read_items()
+            return await channel.read()
 
         r, w = channels.stream()
         result, _ = await asyncio.gather(read_all(r), write(w))

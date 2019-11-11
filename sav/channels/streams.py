@@ -60,10 +60,10 @@ class Reader(Generic[_T_co]):
             await self._fetcher.aclose()
         return exc_type is StopAsyncIteration
 
-    def read_once(self) -> Awaitable[Iterator[_T_co]]:
+    def receive(self) -> Awaitable[Iterator[_T_co]]:
         return self._fetcher.__anext__()
 
-    async def read_items(self, n: int = -1) -> Sequence[_T_co]:
+    async def read(self, n: int = -1) -> Sequence[_T_co]:
         buf = []
         extend = buf.extend
 
@@ -111,5 +111,5 @@ class Writer(Generic[_T_contra]):
     def asend(self, value: _T_contra) -> Awaitable[None]:
         return self._asend_iterable(_guard(value))
 
-    def write_items(self, items: Iterable[_T_contra]) -> Awaitable[None]:
+    def write(self, items: Iterable[_T_contra]) -> Awaitable[None]:
         return self._asend_iterable(items)
