@@ -37,18 +37,17 @@ async def main():
 asyncio.run(main())
 ```
 
-In this example, `channels.create` is called to create the channels,
-while `channels.open` is used to handle startup and cleanup of the
-reverse generators.
-
-The context managers returned by `channels.open` start the generators. 
-Each generator waits until its counterpart is started by the `async for`
-loop at the other end of the channel. 
- 
-When control flows out of the `async with` block, the context managers
-close the reverse generators, and each reverse generator schedules its
-counterpart at the `async for` end of the channel to raise
-a `StopAsyncIteration` exception.
+ * `channels.create()` creates a new channel. It returns a tuple of two
+   asynchronous generators.
+ * `channels.open()` handles startup and cleanup of the second generator
+   of each channel. It returns a context manager that starts and closes
+   the generator. 
+ * Each generator waits until its counterpart is started by the
+   `async for` loop at the other end of the channel. 
+ * When control flows out of the `async with` block, the context
+   managers close the reverse generators, and each reverse generator 
+   schedules its counterpart at the `async for` end of the channel to 
+   raise a `StopAsyncIteration` exception.
 
 
 ## Features
