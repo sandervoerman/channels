@@ -12,32 +12,24 @@ is sent into one generator, it will be yielded by the other generator.
 import asyncio
 from sav import channels
 
-# Use channels.create() to create new channels.
 a_receiver, a_sender = channels.create()
 b_receiver, b_sender = channels.create()
 
 async def send_messages():
     """Send messages into multiple channels."""
-
-    # Use channels.open() to start the generators that you want to send
-    # values into. Each generator will wait until their channel is
-    # iterated over from the other end.
     async with channels.open(a_sender), channels.open(b_sender):
+        # The context managers start the generators. Each generator 
+        # waits until its counterpart at the other end of the channel 
+        # is started by another coroutine. 
 
-        # The content of the async with block is similar to the body of
-        # an asynchronous generator function. However, instead of using
-        # yield statements to generate the values for a single iterator,
-        # we can send different values to different iterators.
         await a_sender.asend('Hello Arnold.')
         await b_sender.asend('Hello Bernard.')
         await a_sender.asend('Goodbye Arnold.')
         await b_sender.asend('Goodbye Bernard.')
         
-        # When control flows out of this code block, each context
-        # manager will close the generator it started. Closing a
-        # generator at one end of a channel causes the generator at the
-        # other end to raise StopAsyncIteration. 
-
+        # The context managers close the generators. Each generator
+        # schedules its counterpart at the other end of the channel
+        # to raise StopAsyncIteration. 
 
 async def show_messages(name, receiver):
     """Show messages from a single channel."""
@@ -46,10 +38,9 @@ async def show_messages(name, receiver):
 
 async def main():
     """Run both channels concurrently."""
-    await asyncio.gather(
-        send_messages(),
-        show_messages('Arnold', a_receiver),
-        show_messages('Bernard', b_receiver))
+    await asyncio.gather(send_messages(),
+                         show_messages('Arnold', a_receiver),
+                         show_messages('Bernard', b_receiver))
 
 asyncio.run(main())
 ```
