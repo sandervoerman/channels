@@ -18,18 +18,10 @@ b_receiver, b_sender = channels.create()
 async def send_messages():
     """Send messages into multiple channels."""
     async with channels.open(a_sender), channels.open(b_sender):
-        # The context managers start the generators. Each generator 
-        # waits until its counterpart at the other end of the channel 
-        # is started by another coroutine. 
-
         await a_sender.asend('Hello Arnold.')
         await b_sender.asend('Hello Bernard.')
         await a_sender.asend('Goodbye Arnold.')
         await b_sender.asend('Goodbye Bernard.')
-        
-        # The context managers close the generators. Each generator
-        # schedules its counterpart at the other end of the channel
-        # to raise StopAsyncIteration. 
 
 async def show_messages(name, receiver):
     """Show messages from a single channel."""
@@ -44,6 +36,20 @@ async def main():
 
 asyncio.run(main())
 ```
+
+In this example, `channels.create` is called to create the channels,
+while `channels.open` is used to handle startup and cleanup of the
+reverse generators.
+
+The context managers returned by `channels.open` start the generators. 
+Each generator waits until its counterpart is started by the `async for`
+loop at the other end of the channel. 
+ 
+When control flows out of the `async with` block, the context managers
+close the reverse generators, and each reverse generator schedules its
+counterpart at the `async for` end of the channel to raise
+a `StopAsyncIteration` exception.
+
 
 ## Features
 
