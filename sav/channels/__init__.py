@@ -173,8 +173,32 @@ This will produce the result::
     1
 
 
+The API
+=======
+
+Creating channels
+-----------------
+
+.. autofunction: create
+
+Each generator will wait, when first iterated over, until the other is
+first iterated over as well. The second generator is then scheduled to
+yield None, while the first generator keeps waiting for a value to be
+sent into the second generator.
+
+From that point onwards, the channel operates symmetrically and
+bidirectionally: when one generator is suspended, the other one is
+waiting, and when a value is sent into the suspended generator, the
+waiting generator is scheduled to yield that value.
+
+When one of the two generators is closed, the other generator will be
+scheduled to raise StopAsyncIteration.
+
+
 Opening and closing generator connections
-=========================================
+-----------------------------------------
+
+.. autofunction: open
 
 While asynchronous iteration only requires a single line of code,
 connecting to a *reverse* or *bidirectional* asynchronous generator
@@ -198,7 +222,6 @@ With channels.open() this example may be rewritten as follows::
         await ag.asend('Hello world!')
 
 """
-
 from __future__ import annotations
 from asyncio import get_running_loop
 from contextlib import asynccontextmanager
@@ -212,16 +235,7 @@ _AG = TypeVar('_AG', bound=AsyncGenerator)
 def create() -> Tuple[AsyncGenerator, AsyncGenerator]:
     """Create a new channel.
 
-    :returns: A connected pair of asynchronous generators.
-
-    Each generator waits, when first iterated over, until the other is
-    first iterated over as well. The second generator is then
-    scheduled to yield None. When the next call to the second generator
-    is made, the value sent into it is scheduled to be yielded by the
-    first generator.
-
-    When one of the two generators is closed, the other generator will
-    be scheduled to raise StopAsyncIteration.
+    :returns: The pair of connected asynchronous generators.
     """
 
     fut = None
@@ -249,22 +263,13 @@ def create() -> Tuple[AsyncGenerator, AsyncGenerator]:
 @asynccontextmanager
 async def open(ag: _AG, *, start: bool = True, clear: bool = True,
                close: bool = True) -> AsyncGenerator[_AG, None]:
-    """Wrap an async context manager around an async generator.
+    """Use a context manager to start and close a generator.
 
-    :returns:      An asynchronous context manager that handles the
-                   startup and cleanup for an asynchronous generator
-                   connection.
-
-    :param ag:     The asynchronous generator.
-
-    :param start:  Whether the generator should be started before
-                   entering context.
-
-    :param clear:  Whether StopAsyncIteration should be cleared if it
-                   was raised but not caught within the context.
-
-    :param close:  Whether the generator should be closed when the
-                   context is exited.
+    :param ag: The async generator.
+    :param start: Whether the generator should be started.
+    :param clear: Whether StopAsyncIteration should be cleared.
+    :param close: Whether the generator should be closed.
+    :returns: The async context manager.
     """
 
     try:
