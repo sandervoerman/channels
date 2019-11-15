@@ -61,9 +61,5 @@ asyncio.run(main())
    channel object.
  * Feed different values to different iterator objects from within a single
    coroutine or asynchronous generator function.  
- * Read or write multiple items at once to avoid cycling through the event loop 
-   for every single item.
- * Delegate item transmission to synchronous generators and read from them in
-   the receiving coroutine.
  
 See the documentation in the source code for further details and examples.

@@ -203,9 +203,8 @@ from __future__ import annotations
 from asyncio import get_running_loop
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Tuple, TypeVar
-from .streams import Reader, Writer
 
-__ALL__ = ['create', 'open', 'stream', 'Reader', 'Writer']
+__all__ = ['create', 'open']
 
 _AG = TypeVar('_AG', bound=AsyncGenerator)
 
@@ -280,22 +279,3 @@ async def open(ag: _AG, *, start: bool = True, clear: bool = True,
     finally:
         if close:
             await ag.aclose()
-
-
-def stream(keep_alive: bool = False) -> Tuple[Reader, Writer]:
-    """Connect a reader/writer pair using a channel.
-
-    :param keep_alive:  Whether the channel should remain open when
-                        the reader context is exited.
-
-    If keep_alive is False (the default), each context will raise
-    StopAsyncIteration in the other context when it exits, and each
-    context will clear StopAsyncIteration upon exit.
-
-    If keep_alive is True, then only the writer context will close the
-    channel upon exit, and the reader becomes a reusable context
-    manager.
-    """
-
-    a, b = create()
-    return Reader(a, keep_alive), Writer(b, keep_alive)
