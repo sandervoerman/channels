@@ -1,4 +1,6 @@
 import asyncio
+import builtins
+import functools
 import io
 import itertools
 import unittest
@@ -67,38 +69,22 @@ class TestDuplex(unittest.IsolatedAsyncioTestCase):
 
 
 class TestReadme(unittest.TestCase):
+    @staticmethod
+    def __capture_print(code: str) -> str:
+        stdout_ = io.StringIO()
+        print_ = functools.partial(print, file=stdout_)
+        builtins_ = {**builtins.__dict__, 'print': print_}
+        globals_ = {**globals(), '__builtins__': builtins_}
+        exec(code, globals_, globals_)
+        return stdout_.getvalue()
+
     def test_example(self) -> None:
-        result = io.StringIO()
-        a_receiver, a_sender = channels.create()
-        b_receiver, b_sender = channels.create()
-
-        async def send_messages():
-            """Send messages into multiple channels."""
-            async with channels.open(a_sender), channels.open(b_sender):
-                await a_sender.asend('Hello Arnold.')
-                await b_sender.asend('Hello Bernard.')
-                await a_sender.asend('Goodbye Arnold.')
-                await b_sender.asend('Goodbye Bernard.')
-
-        async def show_messages(name, receiver):
-            """Show messages from a single channel."""
-            async for message in receiver:
-                print(f'Message for {name}: {message}', file=result)
-
-        async def main():
-            """Run both channels concurrently."""
-            await asyncio.gather(send_messages(),
-                                 show_messages('Arnold', a_receiver),
-                                 show_messages('Bernard', b_receiver))
-
-        asyncio.run(main())
-        self.assertEqual(
-            result.getvalue(),
-            'Message for Arnold: Hello Arnold.\n'
-            'Message for Bernard: Hello Bernard.\n'
-            'Message for Arnold: Goodbye Arnold.\n'
-            'Message for Bernard: Goodbye Bernard.\n'
-        )
+        with open("README.md", "r") as f:
+            readme = f.read()
+        readme = readme.split('\n```')
+        example, expected = readme[1][6:], readme[3]
+        result = self.__capture_print(example)
+        self.assertEqual(result.strip(), expected.strip())
 
 
 if __name__ == '__main__':
