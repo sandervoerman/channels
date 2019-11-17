@@ -255,7 +255,8 @@ def create() -> Tuple[AsyncGenerator, AsyncGenerator]:
             pass
 
         except GeneratorExit:
-            fut.set_exception(EOFError)
+            if fut is not None:
+                fut.set_exception(EOFError)
 
     return generate(False), generate(True)
 
