@@ -74,4 +74,4 @@ The example demonstrates the following features:
  * Delegate item transmission to other coroutines by simply passing them the
    asynchronous generator endpoint.
  
-See the documentation further details.
+See the documentation for further details.
