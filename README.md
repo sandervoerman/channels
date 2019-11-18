@@ -6,8 +6,6 @@ A channel is a pair of asynchronous generators, such that when an object is
 sent into one generator, it will be yielded by the other generator.
 
 ## Example
-The following script shows how channels can be used to send messages into
-concurrent `async for` loops:
 
 ```python
 import asyncio
@@ -38,6 +36,7 @@ async def main():
 asyncio.run(main())
 ```
 
+
 Result:
 
 ```
@@ -46,6 +45,7 @@ Message for Bernard: Hello Bernard.
 Message for Arnold: Goodbye Arnold.
 Message for Bernard: Goodbye Bernard.
 ```
+
 
 The example demonstrates the following features:
 
