@@ -1,18 +1,9 @@
-# Channels between coroutines in Python
-This package provides channels between coroutines with async/await syntax.
-
-## What is a channel?
-A channel is a pair of asynchronous generators, such that when an object is
-sent into one generator, it will be yielded by the other generator.
-
-## Example
-
-```python
 import asyncio
 from sav import channels
 
 a_receiver, a_sender = channels.create()
 b_receiver, b_sender = channels.create()
+
 
 async def send_messages():
     """Send messages into multiple channels."""
@@ -22,10 +13,12 @@ async def send_messages():
         await a_sender.asend('Goodbye Arnold.')
         await b_sender.asend('Goodbye Bernard.')
 
+
 async def show_messages(name, receiver):
     """Show messages from a single channel."""
     async for message in receiver:
-        print(f'Message for {name}: {message}')    
+        print(f'Message for {name}: {message}')
+
 
 async def main():
     """Run both channels concurrently."""
@@ -33,9 +26,5 @@ async def main():
                          show_messages('Arnold', a_receiver),
                          show_messages('Bernard', b_receiver))
 
+
 asyncio.run(main())
-```
-
-See the [documentation] for further details.
-
-[documentation]: https://www.savoerman.nl/channels/

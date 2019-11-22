@@ -1,0 +1,4 @@
+Message for Arnold: Hello Arnold.
+Message for Bernard: Hello Bernard.
+Message for Arnold: Goodbye Arnold.
+Message for Bernard: Goodbye Bernard.
