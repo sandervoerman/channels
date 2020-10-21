@@ -1,15 +1,17 @@
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, suppress
 from io import StringIO
 from importlib import import_module
 from unittest import TestCase, main
-import mypy.api
+from typing import Any
 
 
 class TestChannels(TestCase):
     def test_typing(self) -> None:
-        args = ['--namespace-packages', '-c', 'import sav.channels']
-        out, err, code = mypy.api.run(args)
-        self.assertEqual(code, 0, msg=out+err)
+        with suppress(ImportError):
+            api: Any = import_module('mypy.api')
+            args = ['--namespace-packages', '-c', 'import sav.channels']
+            out, err, code = api.run(args)
+            self.assertEqual(code, 0, msg=out+err)
 
     def test_examples(self) -> None:
         for i in range(1, 4):

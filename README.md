@@ -16,7 +16,7 @@ will be yielded by the other generator, and vice-versa.
 
 
 ## Installation
-This module requires Python 3.8 or higher. Use `pip` to install it
+This module requires Python 3.9 or higher. Use `pip` to install it
 from the command line:
 
 ```

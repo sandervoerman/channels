@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'Channels'
-copyright = '2019, Sander Voerman'
+copyright = '2020, Sander Voerman'
 author = 'Sander Voerman'
 
 # The full version, including alpha/beta/rc tags

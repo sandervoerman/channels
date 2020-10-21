@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="sav.channels",
-    version="0.5",
+    version="0.6",
     author="Sander Voerman",
     author_email="sander@savoerman.nl",
     description="Channels between coroutines",
@@ -16,10 +16,10 @@ setuptools.setup(
     package_data={
         'sav.channels': ['py.typed'],
     },
-    python_requires='>=3.8',
+    python_requires='>=3.9',
     classifiers=[
         "Development Status :: 4 - Beta",
-        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
