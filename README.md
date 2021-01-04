@@ -16,14 +16,19 @@ will be yielded by the other generator, and vice-versa.
 
 
 ## Installation
-This module requires Python 3.9 or higher. Use `pip` to install it
-from the command line:
+The latest release (v0.5) requires Python 3.8 or higher and is available
+on [PyPI]. Use `pip` to install it from the command line:
 
 ```
 pip install sav.channels
 ```
 
-Or visit the online project pages on [GitHub] and [PyPI].
+The version currently under development (v0.6) requires Python 3.9 or higher
+and is available on [GitHub]. Use `git` to download the source:
+
+```
+git clone https://github.com/sandervoerman/channels.git channels
+```
 
 
 ## Example
