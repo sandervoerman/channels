@@ -14,23 +14,6 @@ The `sav.channels` module implements channels as pairs of
 asynchronous generators. When an object is sent into one generator, it
 will be yielded by the other generator, and vice-versa.
 
-
-## Installation
-The latest release (v0.5) requires Python 3.8 or higher and is available
-on [PyPI]. Use `pip` to install it from the command line:
-
-```
-pip install sav.channels
-```
-
-The version currently under development (v0.6) requires Python 3.9 or higher
-and is available on [GitHub]. Use `git` to download the source:
-
-```
-git clone https://github.com/sandervoerman/channels.git channels
-```
-
-
 ## Example
 
 ```python
@@ -60,6 +43,21 @@ async def main():
                          show_messages('Bernard', b_receiver))
 
 asyncio.run(main())
+```
+
+## Installation
+The latest release (v0.5) requires Python 3.8 or higher and is available
+on [PyPI]. Use `pip` to install it from the command line:
+
+```
+pip install sav.channels
+```
+
+The version currently under development (v0.6) requires Python 3.9 or higher
+and is available on [GitHub]. Use `git` to download the source:
+
+```
+git clone https://github.com/sandervoerman/channels.git channels
 ```
 
 ## Documentation
